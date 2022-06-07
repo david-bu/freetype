@@ -4,7 +4,7 @@
  *
  *   FreeType Cache Manager (body).
  *
- * Copyright (C) 2000-2021 by
+ * Copyright (C) 2000-2022 by
  * David Turner, Robert Wilhelm, and Werner Lemberg.
  *
  * This file is part of the FreeType project, and may only be used,
@@ -357,7 +357,7 @@
   {
     FT_Error     error;
     FT_Memory    memory;
-    FTC_Manager  manager;
+    FTC_Manager  manager = NULL;
 
 
     if ( !library )

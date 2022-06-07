@@ -4,7 +4,7 @@
  *
  *   CID-keyed Type1 font loader (body).
  *
- * Copyright (C) 1996-2021 by
+ * Copyright (C) 1996-2022 by
  * David Turner, Robert Wilhelm, and Werner Lemberg.
  *
  * This file is part of the FreeType project, and may only be used,
@@ -113,7 +113,7 @@
         CID_FaceDict  dict;
 
 
-        if ( parser->num_dict < 0 || parser->num_dict >= cid->num_dicts )
+        if ( parser->num_dict >= cid->num_dicts )
         {
           FT_ERROR(( "cid_load_keyword: invalid use of `%s'\n",
                      keyword->ident ));
@@ -164,7 +164,7 @@
     FT_Fixed      temp_scale;
 
 
-    if ( parser->num_dict >= 0 && parser->num_dict < face->cid.num_dicts )
+    if ( parser->num_dict < face->cid.num_dicts )
     {
       FT_Matrix*  matrix;
       FT_Vector*  offset;
@@ -244,11 +244,11 @@
     FT_Memory     memory = face->root.memory;
     FT_Stream     stream = parser->stream;
     FT_Error      error  = FT_Err_Ok;
-    FT_Long       num_dicts;
+    FT_Long       num_dicts, max_dicts;
 
 
     num_dicts = cid_parser_to_int( parser );
-    if ( num_dicts < 0 )
+    if ( num_dicts < 0 || num_dicts > FT_INT_MAX )
     {
       FT_ERROR(( "parse_fd_array: invalid number of dictionaries\n" ));
       goto Exit;
@@ -272,18 +272,18 @@
      * need a `dup X' at the very beginning and a `put' at the end, so a
      * rough guess using 100 bytes as the minimum is justified.
      */
-    if ( (FT_ULong)num_dicts > stream->size / 100 )
+    max_dicts = (FT_Long)( stream->size / 100 );
+    if ( num_dicts > max_dicts )
     {
       FT_TRACE0(( "parse_fd_array: adjusting FDArray size"
-                  " (from %ld to %lu)\n",
-                  num_dicts,
-                  stream->size / 100 ));
-      num_dicts = (FT_Long)( stream->size / 100 );
+                  " (from %ld to %ld)\n",
+                  num_dicts, max_dicts ));
+      num_dicts = max_dicts;
     }
 
     if ( !cid->font_dicts )
     {
-      FT_Int  n;
+      FT_UInt  n;
 
 
       if ( FT_NEW_ARRAY( cid->font_dicts, num_dicts ) )
@@ -322,7 +322,7 @@
     CID_FaceDict  dict;
 
 
-    if ( parser->num_dict >= 0 && parser->num_dict < face->cid.num_dicts )
+    if ( parser->num_dict < face->cid.num_dicts )
     {
       dict = face->cid.font_dicts + parser->num_dict;
 
@@ -345,7 +345,7 @@
                    CID_Parser*  parser )
   {
 #ifdef FT_DEBUG_LEVEL_TRACE
-    if ( parser->num_dict >= 0 && parser->num_dict < face->cid.num_dicts )
+    if ( parser->num_dict < face->cid.num_dicts )
     {
       T1_TokenRec  token;
       FT_UInt      len;
@@ -427,7 +427,7 @@
               parser->num_dict++;
 
 #ifdef FT_DEBUG_LEVEL_TRACE
-              FT_TRACE4(( " FontDict %d", parser->num_dict ));
+              FT_TRACE4(( " FontDict %u", parser->num_dict ));
               if ( parser->num_dict > face->cid.num_dicts )
                 FT_TRACE4(( " (ignored)" ));
               FT_TRACE4(( "\n" ));
@@ -517,7 +517,7 @@
     FT_Memory      memory = face->root.memory;
     FT_Stream      stream = face->cid_stream;
     FT_Error       error;
-    FT_Int         n;
+    FT_UInt        n;
     CID_Subrs      subr;
     FT_UInt        max_offsets = 0;
     FT_ULong*      offsets = NULL;
@@ -559,8 +559,8 @@
       }
 
       /* read the subrmap's offsets */
-      if ( FT_STREAM_SEEK( cid->data_offset + dict->subrmap_offset )     ||
-           FT_FRAME_ENTER( ( num_subrs + 1 ) * dict->sd_bytes ) )
+      if ( FT_STREAM_SEEK( cid->data_offset + dict->subrmap_offset ) ||
+           FT_FRAME_ENTER( ( num_subrs + 1 ) * dict->sd_bytes )      )
         goto Fail;
 
       p = (FT_Byte*)stream->cursor;
@@ -771,7 +771,7 @@
     CID_Parser*  parser;
     FT_Memory    memory = face->root.memory;
     FT_Error     error;
-    FT_Int       n;
+    FT_UInt      n;
 
     CID_FaceInfo  cid = &face->cid;
 

@@ -4,7 +4,7 @@
  *
  *   CID-keyed Type1 Glyph Loader (body).
  *
- * Copyright (C) 1996-2021 by
+ * Copyright (C) 1996-2022 by
  * David Turner, Robert Wilhelm, and Werner Lemberg.
  *
  * This file is part of the FreeType project, and may only be used,
@@ -117,9 +117,9 @@
       off2      = cid_get_offset( &p, cid->gd_bytes );
       FT_FRAME_EXIT();
 
-      if ( fd_select >= (FT_ULong)cid->num_dicts ||
-           off2 > stream->size                   ||
-           off1 > off2                           )
+      if ( fd_select >= cid->num_dicts ||
+           off2 > stream->size         ||
+           off1 > off2                 )
       {
         FT_TRACE0(( "cid_load_glyph: invalid glyph stream offsets\n" ));
         error = FT_THROW( Invalid_Offset );

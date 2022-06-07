@@ -4,7 +4,7 @@
  *
  *   TrueType and OpenType colored glyph layer support (body).
  *
- * Copyright (C) 2018-2021 by
+ * Copyright (C) 2018-2022 by
  * David Turner, Robert Wilhelm, Dominik Röttsches, and Werner Lemberg.
  *
  * Originally written by Shao Yu Zhang <shaozhang@fb.com>.
@@ -27,6 +27,7 @@
    */
 
 
+#include <freetype/internal/ftcalc.h>
 #include <freetype/internal/ftdebug.h>
 #include <freetype/internal/ftstream.h>
 #include <freetype/tttags.h>
@@ -505,31 +506,45 @@
                              &apaint->u.linear_gradient.colorline ) )
         return 0;
 
-      apaint->u.linear_gradient.p0.x = FT_NEXT_SHORT( p );
-      apaint->u.linear_gradient.p0.y = FT_NEXT_SHORT( p );
-      apaint->u.linear_gradient.p1.x = FT_NEXT_SHORT( p );
-      apaint->u.linear_gradient.p1.y = FT_NEXT_SHORT( p );
-      apaint->u.linear_gradient.p2.x = FT_NEXT_SHORT( p );
-      apaint->u.linear_gradient.p2.y = FT_NEXT_SHORT( p );
+      /*
+       * In order to support variations expose these as FT_Fixed 16.16 values so
+       * that we can support fractional values after interpolation.
+       */
+      apaint->u.linear_gradient.p0.x = INT_TO_FIXED( FT_NEXT_SHORT( p ) );
+      apaint->u.linear_gradient.p0.y = INT_TO_FIXED( FT_NEXT_SHORT( p ) );
+      apaint->u.linear_gradient.p1.x = INT_TO_FIXED( FT_NEXT_SHORT( p ) );
+      apaint->u.linear_gradient.p1.y = INT_TO_FIXED( FT_NEXT_SHORT( p ) );
+      apaint->u.linear_gradient.p2.x = INT_TO_FIXED( FT_NEXT_SHORT( p ) );
+      apaint->u.linear_gradient.p2.y = INT_TO_FIXED( FT_NEXT_SHORT( p ) );
 
       return 1;
     }
 
     else if ( apaint->format == FT_COLR_PAINTFORMAT_RADIAL_GRADIENT )
     {
+      FT_Pos  tmp;
+
+
       if ( !read_color_line( child_table_p,
                              &apaint->u.radial_gradient.colorline ) )
         return 0;
 
-      apaint->u.radial_gradient.c0.x = FT_NEXT_SHORT( p );
-      apaint->u.radial_gradient.c0.y = FT_NEXT_SHORT( p );
+      /* In the OpenType specification, `r0` and `r1` are defined as   */
+      /* `UFWORD`.  Since FreeType doesn't have a corresponding 16.16  */
+      /* format we convert to `FWORD` and replace negative values with */
+      /* (32bit) `FT_INT_MAX`.                                         */
 
-      apaint->u.radial_gradient.r0 = FT_NEXT_USHORT( p );
+      apaint->u.radial_gradient.c0.x = INT_TO_FIXED( FT_NEXT_SHORT( p ) );
+      apaint->u.radial_gradient.c0.y = INT_TO_FIXED( FT_NEXT_SHORT( p ) );
 
-      apaint->u.radial_gradient.c1.x = FT_NEXT_SHORT( p );
-      apaint->u.radial_gradient.c1.y = FT_NEXT_SHORT( p );
+      tmp                          = INT_TO_FIXED( FT_NEXT_SHORT( p ) );
+      apaint->u.radial_gradient.r0 = tmp < 0 ? FT_INT_MAX : tmp;
 
-      apaint->u.radial_gradient.r1 = FT_NEXT_USHORT( p );
+      apaint->u.radial_gradient.c1.x = INT_TO_FIXED( FT_NEXT_SHORT( p ) );
+      apaint->u.radial_gradient.c1.y = INT_TO_FIXED( FT_NEXT_SHORT( p ) );
+
+      tmp                          = INT_TO_FIXED( FT_NEXT_SHORT( p ) );
+      apaint->u.radial_gradient.r1 = tmp < 0 ? FT_INT_MAX : tmp;
 
       return 1;
     }
@@ -540,11 +555,15 @@
                              &apaint->u.sweep_gradient.colorline ) )
         return 0;
 
-      apaint->u.sweep_gradient.center.x = FT_NEXT_SHORT( p );
-      apaint->u.sweep_gradient.center.y = FT_NEXT_SHORT( p );
+      apaint->u.sweep_gradient.center.x =
+          INT_TO_FIXED( FT_NEXT_SHORT( p ) );
+      apaint->u.sweep_gradient.center.y =
+          INT_TO_FIXED( FT_NEXT_SHORT( p ) );
 
-      apaint->u.sweep_gradient.start_angle = FT_NEXT_SHORT( p ) << 2;
-      apaint->u.sweep_gradient.end_angle   = FT_NEXT_SHORT( p ) << 2;
+      apaint->u.sweep_gradient.start_angle =
+          F2DOT14_TO_FIXED( FT_NEXT_SHORT( p ) );
+      apaint->u.sweep_gradient.end_angle =
+          F2DOT14_TO_FIXED( FT_NEXT_SHORT( p ) );
 
       return 1;
     }
@@ -568,6 +587,10 @@
 
       p = child_table_p;
 
+      /*
+       * The following matrix coefficients are encoded as
+       * OpenType 16.16 fixed-point values.
+       */
       apaint->u.transform.affine.xx = FT_NEXT_LONG( p );
       apaint->u.transform.affine.yx = FT_NEXT_LONG( p );
       apaint->u.transform.affine.xy = FT_NEXT_LONG( p );
@@ -583,8 +606,8 @@
       apaint->u.translate.paint.p                     = child_table_p;
       apaint->u.translate.paint.insert_root_transform = 0;
 
-      apaint->u.translate.dx = FT_NEXT_SHORT( p ) << 16;
-      apaint->u.translate.dy = FT_NEXT_SHORT( p ) << 16;
+      apaint->u.translate.dx = INT_TO_FIXED( FT_NEXT_SHORT( p ) );
+      apaint->u.translate.dy = INT_TO_FIXED( FT_NEXT_SHORT( p ) );
 
       return 1;
     }
@@ -602,14 +625,14 @@
       apaint->u.scale.paint.insert_root_transform = 0;
 
       /* All scale paints get at least one scale value. */
-      apaint->u.scale.scale_x = FT_NEXT_SHORT( p ) << 2;
+      apaint->u.scale.scale_x = F2DOT14_TO_FIXED( FT_NEXT_SHORT( p ) );
 
       /* Non-uniform ones read an extra y value. */
       if ( apaint->format ==
              FT_COLR_PAINTFORMAT_SCALE                 ||
            (FT_PaintFormat_Internal)apaint->format ==
              FT_COLR_PAINTFORMAT_INTERNAL_SCALE_CENTER )
-        apaint->u.scale.scale_y = FT_NEXT_SHORT( p ) << 2;
+        apaint->u.scale.scale_y = F2DOT14_TO_FIXED( FT_NEXT_SHORT( p ) );
       else
         apaint->u.scale.scale_y = apaint->u.scale.scale_x;
 
@@ -620,8 +643,8 @@
            (FT_PaintFormat_Internal)apaint->format ==
              FT_COLR_PAINTFORMAT_INTERNAL_SCALE_UNIFORM_CENTER )
       {
-        apaint->u.scale.center_x = FT_NEXT_SHORT ( p ) << 16;
-        apaint->u.scale.center_y = FT_NEXT_SHORT ( p ) << 16;
+        apaint->u.scale.center_x = INT_TO_FIXED( FT_NEXT_SHORT ( p ) );
+        apaint->u.scale.center_y = INT_TO_FIXED( FT_NEXT_SHORT ( p ) );
       }
       else
       {
@@ -643,17 +666,13 @@
       apaint->u.rotate.paint.p                     = child_table_p;
       apaint->u.rotate.paint.insert_root_transform = 0;
 
-      /* The angle is specified as F2DOT14 and our output type is an FT_Fixed,
-       * shift by 2 positions. */
-      apaint->u.rotate.angle = FT_NEXT_SHORT( p ) << 2;
+      apaint->u.rotate.angle = F2DOT14_TO_FIXED( FT_NEXT_SHORT( p ) );
 
       if ( (FT_PaintFormat_Internal)apaint->format ==
            FT_COLR_PAINTFORMAT_INTERNAL_ROTATE_CENTER )
       {
-        /* The center is specified as Int16 in font units, shift by 16 bits to
-         * convert to our FT_Fixed output type. */
-        apaint->u.rotate.center_x = FT_NEXT_SHORT( p ) << 16;
-        apaint->u.rotate.center_y = FT_NEXT_SHORT( p ) << 16;
+        apaint->u.rotate.center_x = INT_TO_FIXED( FT_NEXT_SHORT( p ) );
+        apaint->u.rotate.center_y = INT_TO_FIXED( FT_NEXT_SHORT( p ) );
       }
       else
       {
@@ -673,14 +692,14 @@
       apaint->u.skew.paint.p                     = child_table_p;
       apaint->u.skew.paint.insert_root_transform = 0;
 
-      apaint->u.skew.x_skew_angle = FT_NEXT_SHORT( p ) << 2;
-      apaint->u.skew.y_skew_angle = FT_NEXT_SHORT( p ) << 2;
+      apaint->u.skew.x_skew_angle = F2DOT14_TO_FIXED( FT_NEXT_SHORT( p ) );
+      apaint->u.skew.y_skew_angle = F2DOT14_TO_FIXED( FT_NEXT_SHORT( p ) );
 
       if ( (FT_PaintFormat_Internal)apaint->format ==
            FT_COLR_PAINTFORMAT_INTERNAL_SKEW_CENTER )
       {
-        apaint->u.skew.center_x = FT_NEXT_SHORT( p ) << 16;
-        apaint->u.skew.center_y = FT_NEXT_SHORT( p ) << 16;
+        apaint->u.skew.center_x = INT_TO_FIXED( FT_NEXT_SHORT( p ) );
+        apaint->u.skew.center_y = INT_TO_FIXED( FT_NEXT_SHORT( p ) );
       }
       else
       {
@@ -815,7 +834,7 @@
   {
     Colr*  colr;
 
-    FT_Byte  *p, *p1, *clip_base;
+    FT_Byte  *p, *p1, *clip_base, *limit;
 
     FT_Byte    clip_list_format;
     FT_ULong   num_clip_boxes, i;
@@ -838,15 +857,31 @@
 
     p = colr->clip_list;
 
+    /* Limit points to the first byte after the end of the color table.    */
+    /* Thus, in subsequent limit checks below we need to check whether the */
+    /* read pointer is strictly greater than a position offset by certain  */
+    /* field sizes to the left of that position.                           */
+    limit = (FT_Byte*)colr->table + colr->table_size;
+
+    /* Check whether we can extract one `uint8` and one `uint32`. */
+    if ( p > limit - ( 1 + 4 ) )
+      return 0;
+
     clip_base        = p;
     clip_list_format = FT_NEXT_BYTE ( p );
 
     /* Format byte used here to be able to upgrade ClipList for >16bit */
-    /* glyph ids; for now we can expect it to be 0. */
+    /* glyph ids; for now we can expect it to be 0.                    */
     if ( !( clip_list_format == 1 ) )
       return 0;
 
     num_clip_boxes = FT_NEXT_ULONG( p );
+
+    /* Check whether we can extract two `uint16` and one `Offset24`, */
+    /* `num_clip_boxes` times.                                       */
+    if ( colr->table_size / ( 2 + 2 + 3 ) < num_clip_boxes ||
+         p > limit - ( 2 + 2 + 3 ) * num_clip_boxes        )
+      return 0;
 
     for ( i = 0; i < num_clip_boxes; ++i )
     {
@@ -858,12 +893,17 @@
       {
         p1 = (FT_Byte*)( clip_base + clip_box_offset );
 
-        if ( p1 >= ( (FT_Byte*)colr->table + colr->table_size ) )
+        /* Check whether we can extract one `uint8`. */
+        if ( p1 > limit - 1 )
           return 0;
 
         format = FT_NEXT_BYTE( p1 );
 
         if ( format > 1 )
+          return 0;
+
+        /* Check whether we can extract four `FWORD`. */
+        if ( p1 > limit - ( 2 + 2 + 2 + 2 ) )
           return 0;
 
         /* `face->root.size->metrics.x_scale` and `y_scale` are factors   */
@@ -1086,9 +1126,9 @@
       if ( face->root.internal->transform_flags & 2 )
       {
         paint->u.transform.affine.dx =
-          face->root.internal->transform_delta.x << 10;
+          face->root.internal->transform_delta.x * ( 1 << 10 );
         paint->u.transform.affine.dy =
-          face->root.internal->transform_delta.y << 10;
+          face->root.internal->transform_delta.y * ( 1 << 10 );
       }
       else
       {
